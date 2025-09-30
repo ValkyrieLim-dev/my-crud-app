@@ -39,6 +39,8 @@ export default function RentalPage() {
 
   const [rentalRecords, setRentalRecords] = useState<RentalRecord[]>([])
   const [loadingRecords, setLoadingRecords] = useState(true)
+  const [showMonthYear, setShowMonthYear] = useState(false)
+
 
   const months = [
     "January","February","March","April","May","June",
@@ -148,7 +150,7 @@ export default function RentalPage() {
 
         <h1 className="text-xl font-semibold mb-3">Rental Transactions</h1>
 
-        {/* Month & Year selection */}
+       {showMonthYear && (
         <div className="flex gap-2 mb-3 items-center">
           <select
             value={month}
@@ -177,7 +179,7 @@ export default function RentalPage() {
             {loadingTenants ? "Loading Tenants..." : "Add Transaction"}
           </button>
         </div>
-
+         )}
         {/* Ongoing Transaction Table */}
         {showTransaction && (
           <div className="mt-3 border p-3 rounded bg-gray-100">

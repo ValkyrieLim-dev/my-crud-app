@@ -78,7 +78,8 @@ export default function CoprasRecordsPage() {
   // --- Summary Calculations ---
   const totalSales = records.reduce((sum, r) => sum + (r.sales || 0), 0)
   const totalExpenses = records.reduce((sum, r) => sum + (r.expenses || 0), 0)
-  const totalNetIncome = totalSales - totalExpenses
+  const totalNetSales = (totalSales - totalExpenses) / 2
+
 
   const areaStats = records.reduce((acc, r) => {
     if (!r.area_id) return acc
@@ -86,7 +87,8 @@ export default function CoprasRecordsPage() {
       acc[r.area_id] = { sales: 0, net: 0, name: r.areas?.area_name || "" }
     }
     acc[r.area_id].sales += r.sales || 0
-    acc[r.area_id].net += (r.sales || 0) - (r.expenses || 0)
+    acc[r.area_id].net += ((r.sales || 0) - (r.expenses || 0)) / 2
+
     return acc
   }, {} as Record<string, { sales: number; net: number; name: string }>)
 
@@ -115,99 +117,85 @@ export default function CoprasRecordsPage() {
 
      
       {/* Dashboard Cards */}
-<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-  <div className="bg-white shadow-md rounded-xl p-3 border border-gray-200 flex flex-col items-center justify-center aspect-square">
-    <h3 className="text-xs font-semibold text-gray-600">Total Sales</h3>
-    <p className="text-lg font-bold text-green-600">
-      {formatCurrency(totalSales)}
-    </p>
-  </div>
-  <div className="bg-white shadow-md rounded-xl p-3 border border-gray-200 flex flex-col items-center justify-center aspect-square">
-    <h3 className="text-xs font-semibold text-gray-600">Total Expenses</h3>
-    <p className="text-lg font-bold text-red-600">
-      {formatCurrency(totalExpenses)}
-    </p>
-  </div>
-  <div className="bg-white shadow-md rounded-xl p-3 border border-gray-200 flex flex-col items-center justify-center aspect-square">
-    <h3 className="text-xs font-semibold text-gray-600">Net Income</h3>
-    <p className="text-lg font-bold text-blue-600">
-      {formatCurrency(totalNetIncome)}
-    </p>
-  </div>
-  <div className="bg-white shadow-md rounded-xl p-3 border border-gray-200 flex flex-col items-center justify-center aspect-square">
-    <h3 className="text-xs font-semibold text-gray-600">Best Area (Sales)</h3>
-    <p className="text-sm font-medium text-gray-800 text-center">
-      {topSalesArea ? topSalesArea.name : "N/A"}
-    </p>
-    <p className="text-xs text-green-600">
-      {topSalesArea ? formatCurrency(topSalesArea.sales) : ""}
-    </p>
-  </div>
-  <div className="bg-white shadow-md rounded-xl p-3 border border-gray-200 flex flex-col items-center justify-center aspect-square">
-    <h3 className="text-xs font-semibold text-gray-600">Best Area (Net)</h3>
-    <p className="text-sm font-medium text-gray-800 text-center">
-      {topNetArea ? topNetArea.name : "N/A"}
-    </p>
-    <p className="text-xs text-blue-600">
-      {topNetArea ? formatCurrency(topNetArea.net) : ""}
-    </p>
-  </div>
-</div>
+          <div className="bg-white rounded-xl shadow-md border border-gray-200 p-2 flex overflow-x-auto gap-3 text-gray-800">
+            {/* Year */}
+            <div className="flex flex-col items-center justify-center p-2 border border-gray-100 rounded min-w-[90px]">
+              <h3 className="text-[10px] font-semibold text-gray-600">Year</h3>
+              <p className="text-sm font-bold text-gray-800">2025</p>
+            </div>
+
+            {/* Total Sales */}
+            <div className="flex flesx-col items-center justify-center p-2 border border-gray-100 rounded min-w-[90px]">
+              <h3 className="text-[10px] font-semibold text-gray-600">Total Sales</h3>
+              <p className="text-sm font-bold text-green-600">{formatCurrency(totalSales)}</p>
+            </div>
+
+            {/* Total Expenses */}
+            <div className="flex flex-col items-center justify-center p-2 border border-gray-100 rounded min-w-[90px]">
+              <h3 className="text-[10px] font-semibold text-gray-600">Total Expenses</h3>
+              <p className="text-sm font-bold text-red-600">{formatCurrency(totalExpenses)}</p>
+            </div>
+
+            {/* Net Income */}
+            <div className="flex flex-col items-center justify-center p-2 border border-gray-100 rounded min-w-[90px]">
+              <h3 className="text-[10px] font-semibold text-gray-600">Net Income</h3>
+              <p className="text-[10px] text-gray-500 italic mb-1">Divided by 2</p>
+              <p className="text-sm font-bold text-blue-600">{formatCurrency(totalNetSales)}</p>
+            </div>
 
 
-      {/* Records Table */}
-      {loading ? (
-        <p className="text-gray-600 text-center">Loading...</p>
-      ) : records.length === 0 ? (
-        <p className="text-gray-600 text-center">No records found.</p>
-      ) : (
-        <div className="overflow-x-auto rounded-xl shadow-md border border-gray-200 bg-white">
-          <table className="min-w-full text-sm text-gray-900">
-            <thead className="bg-blue-100 text-blue-700">
-              <tr>
-                {[
-                  "Date",
-                  "Area",
-                  "Farmer",
-                  "Sales",
-                  "Expenses",
-                  "Net Income",
-                  "Weight",
-                  "Price/Kilo",
-                ].map((h) => (
-                  <th
-                    key={h}
-                    className="px-3 py-2 text-left font-semibold whitespace-nowrap"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {records.map((r) => (
-                <tr
-                  key={r.id}
-                  className="hover:bg-blue-50 transition-colors duration-200"
-                >
-                  <td className="px-3 py-2">{r.date}</td>
-                  <td className="px-3 py-2">{r.areas?.area_name}</td>
-                  <td className="px-3 py-2">{r.farmer}</td>
-                  <td className="px-3 py-2">{formatCurrency(r.sales)}</td>
-                  <td className="px-3 py-2">{formatCurrency(r.expenses)}</td>
-                  <td className="px-3 py-2">
-                    {formatCurrency((r.sales || 0) - (r.expenses || 0))}
-                  </td>
-                  <td className="px-3 py-2">{r.weight}</td>
-                  <td className="px-3 py-2">
-                    {formatCurrency(r.price_per_kilo)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          </div>
+
+
+
+      {/* Records Cards */}
+{loading ? (
+  <p className="text-gray-600 text-center">Loading...</p>
+) : records.length === 0 ? (
+  <p className="text-gray-600 text-center">No records found.</p>
+) : (
+  <div className="grid gap-3 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+    {records.map((r) => (
+      <div
+        key={r.id}
+        className="bg-white rounded-xl shadow-md border border-gray-200 p-4 flex flex-col gap-1 hover:shadow-lg transition"
+      >
+        <div className="flex justify-between text-sm text-gray-500">
+          <span className="font-semibold">Date:</span>
+          <span>{r.date}</span>
         </div>
-      )}
+        <div className="flex justify-between text-sm text-gray-500">
+          <span className="font-semibold">Area:</span>
+          <span>{r.areas?.area_name}</span>
+        </div>
+        <div className="flex justify-between text-sm text-gray-500">
+          <span className="font-semibold">Farmer:</span>
+          <span>{r.farmer}</span>
+        </div>
+        <div className="flex justify-between text-sm text-green-600 font-bold">
+          <span>Sales:</span>
+          <span>{formatCurrency(r.sales)}</span>
+        </div>
+        <div className="flex justify-between text-sm text-red-600 font-bold">
+          <span>Expenses:</span>
+          <span>{formatCurrency(r.expenses)}</span>
+        </div>
+        <div className="flex justify-between text-sm text-blue-600 font-bold">
+          <span>Net Income:</span>
+          <span>{formatCurrency(((r.sales || 0) - (r.expenses || 0)) / 2)}</span>
+        </div>
+        <div className="flex justify-between text-sm text-gray-700">
+          <span>Weight:</span>
+          <span>{r.weight} kg</span>
+        </div>
+        <div className="flex justify-between text-sm text-gray-700">
+          <span>Price/Kilo:</span>
+          <span>{formatCurrency(r.price_per_kilo)}</span>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
 
       {/* Modal */}
       {isModalOpen && (
