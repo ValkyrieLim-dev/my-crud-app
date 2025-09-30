@@ -109,53 +109,47 @@ export default function CoprasRecordsPage() {
         </button>
       </div>
 
+     
       {/* Dashboard Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white shadow-md rounded-xl p-4 border border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-600">Total Sales</h3>
-          <p className="text-xl font-bold text-green-600">
-            {formatCurrency(totalSales)}
-          </p>
-        </div>
-        <div className="bg-white shadow-md rounded-xl p-4 border border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-600">
-            Total Expenses
-          </h3>
-          <p className="text-xl font-bold text-red-600">
-            {formatCurrency(totalExpenses)}
-          </p>
-        </div>
-        <div className="bg-white shadow-md rounded-xl p-4 border border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-600">
-            Total Net Income
-          </h3>
-          <p className="text-xl font-bold text-blue-600">
-            {formatCurrency(totalNetIncome)}
-          </p>
-        </div>
-        <div className="bg-white shadow-md rounded-xl p-4 border border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-600">
-            Best Area (Sales)
-          </h3>
-          <p className="text-base font-medium text-gray-800">
-            {topSalesArea ? topSalesArea.name : "N/A"}
-          </p>
-          <p className="text-sm text-green-600">
-            {topSalesArea ? formatCurrency(topSalesArea.sales) : ""}
-          </p>
-        </div>
-        <div className="bg-white shadow-md rounded-xl p-4 border border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-600">
-            Best Area (Net Income)
-          </h3>
-          <p className="text-base font-medium text-gray-800">
-            {topNetArea ? topNetArea.name : "N/A"}
-          </p>
-          <p className="text-sm text-blue-600">
-            {topNetArea ? formatCurrency(topNetArea.net) : ""}
-          </p>
-        </div>
-      </div>
+<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+  <div className="bg-white shadow-md rounded-xl p-3 border border-gray-200 flex flex-col items-center justify-center aspect-square">
+    <h3 className="text-xs font-semibold text-gray-600">Total Sales</h3>
+    <p className="text-lg font-bold text-green-600">
+      {formatCurrency(totalSales)}
+    </p>
+  </div>
+  <div className="bg-white shadow-md rounded-xl p-3 border border-gray-200 flex flex-col items-center justify-center aspect-square">
+    <h3 className="text-xs font-semibold text-gray-600">Total Expenses</h3>
+    <p className="text-lg font-bold text-red-600">
+      {formatCurrency(totalExpenses)}
+    </p>
+  </div>
+  <div className="bg-white shadow-md rounded-xl p-3 border border-gray-200 flex flex-col items-center justify-center aspect-square">
+    <h3 className="text-xs font-semibold text-gray-600">Net Income</h3>
+    <p className="text-lg font-bold text-blue-600">
+      {formatCurrency(totalNetIncome)}
+    </p>
+  </div>
+  <div className="bg-white shadow-md rounded-xl p-3 border border-gray-200 flex flex-col items-center justify-center aspect-square">
+    <h3 className="text-xs font-semibold text-gray-600">Best Area (Sales)</h3>
+    <p className="text-sm font-medium text-gray-800 text-center">
+      {topSalesArea ? topSalesArea.name : "N/A"}
+    </p>
+    <p className="text-xs text-green-600">
+      {topSalesArea ? formatCurrency(topSalesArea.sales) : ""}
+    </p>
+  </div>
+  <div className="bg-white shadow-md rounded-xl p-3 border border-gray-200 flex flex-col items-center justify-center aspect-square">
+    <h3 className="text-xs font-semibold text-gray-600">Best Area (Net)</h3>
+    <p className="text-sm font-medium text-gray-800 text-center">
+      {topNetArea ? topNetArea.name : "N/A"}
+    </p>
+    <p className="text-xs text-blue-600">
+      {topNetArea ? formatCurrency(topNetArea.net) : ""}
+    </p>
+  </div>
+</div>
+
 
       {/* Records Table */}
       {loading ? (
