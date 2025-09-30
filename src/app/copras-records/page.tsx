@@ -10,9 +10,8 @@ export default function CoprasRecordsPage() {
   const [form, setForm] = useState<Partial<CoprasRecord>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
-  // Format currency (₱)
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-PH", {
       style: "currency",
@@ -70,15 +69,29 @@ export default function CoprasRecordsPage() {
 
     setForm({})
     setEditingId(null)
-    setShowModal(false)
+    setIsModalOpen(false)
     fetchRecords()
   }
 
-  const deleteRecord = async (id: string) => {
-    if (!confirm("Delete this record?")) return
-    await supabase.from("copras_records").delete().eq("id", id)
-    fetchRecords()
-  }
+  // --- Summary Calculations ---
+  const totalSales = records.reduce((sum, r) => sum + (r.sales || 0), 0)
+  const totalExpenses = records.reduce((sum, r) => sum + (r.expenses || 0), 0)
+  const totalNetIncome = totalSales - totalExpenses
+
+  const areaStats = records.reduce((acc, r) => {
+    if (!r.area_id) return acc
+    if (!acc[r.area_id]) {
+      acc[r.area_id] = { sales: 0, net: 0, name: r.areas?.area_name || "" }
+    }
+    acc[r.area_id].sales += r.sales || 0
+    acc[r.area_id].net += (r.sales || 0) - (r.expenses || 0)
+    return acc
+  }, {} as Record<string, { sales: number; net: number; name: string }>)
+
+  const topSalesArea = Object.values(areaStats).sort(
+    (a, b) => b.sales - a.sales
+  )[0]
+  const topNetArea = Object.values(areaStats).sort((a, b) => b.net - a.net)[0]
 
   return (
     <div className="p-4 max-w-6xl mx-auto bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen text-gray-900">
@@ -89,15 +102,59 @@ export default function CoprasRecordsPage() {
       {/* Add Record Button */}
       <div className="mb-6 flex justify-end">
         <button
-          onClick={() => {
-            setForm({})
-            setEditingId(null)
-            setShowModal(true)
-          }}
-          className="btn-primary"
+          onClick={() => setIsModalOpen(true)}
+          className="btn-primary px-4 py-2"
         >
-          Add Record
+          + Add Record
         </button>
+      </div>
+
+      {/* Dashboard Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white shadow-md rounded-xl p-4 border border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-600">Total Sales</h3>
+          <p className="text-xl font-bold text-green-600">
+            {formatCurrency(totalSales)}
+          </p>
+        </div>
+        <div className="bg-white shadow-md rounded-xl p-4 border border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-600">
+            Total Expenses
+          </h3>
+          <p className="text-xl font-bold text-red-600">
+            {formatCurrency(totalExpenses)}
+          </p>
+        </div>
+        <div className="bg-white shadow-md rounded-xl p-4 border border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-600">
+            Total Net Income
+          </h3>
+          <p className="text-xl font-bold text-blue-600">
+            {formatCurrency(totalNetIncome)}
+          </p>
+        </div>
+        <div className="bg-white shadow-md rounded-xl p-4 border border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-600">
+            Best Area (Sales)
+          </h3>
+          <p className="text-base font-medium text-gray-800">
+            {topSalesArea ? topSalesArea.name : "N/A"}
+          </p>
+          <p className="text-sm text-green-600">
+            {topSalesArea ? formatCurrency(topSalesArea.sales) : ""}
+          </p>
+        </div>
+        <div className="bg-white shadow-md rounded-xl p-4 border border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-600">
+            Best Area (Net Income)
+          </h3>
+          <p className="text-base font-medium text-gray-800">
+            {topNetArea ? topNetArea.name : "N/A"}
+          </p>
+          <p className="text-sm text-blue-600">
+            {topNetArea ? formatCurrency(topNetArea.net) : ""}
+          </p>
+        </div>
       </div>
 
       {/* Records Table */}
@@ -119,7 +176,6 @@ export default function CoprasRecordsPage() {
                   "Net Income",
                   "Weight",
                   "Price/Kilo",
-                  "Actions",
                 ].map((h) => (
                   <th
                     key={h}
@@ -141,28 +197,12 @@ export default function CoprasRecordsPage() {
                   <td className="px-3 py-2">{r.farmer}</td>
                   <td className="px-3 py-2">{formatCurrency(r.sales)}</td>
                   <td className="px-3 py-2">{formatCurrency(r.expenses)}</td>
-                  <td className="px-3 py-2">{formatCurrency(r.net_income)}</td>
+                  <td className="px-3 py-2">
+                    {formatCurrency((r.sales || 0) - (r.expenses || 0))}
+                  </td>
                   <td className="px-3 py-2">{r.weight}</td>
                   <td className="px-3 py-2">
                     {formatCurrency(r.price_per_kilo)}
-                  </td>
-                  <td className="px-3 py-2 flex flex-wrap gap-2">
-                    <button
-                      onClick={() => {
-                        setForm(r)
-                        setEditingId(r.id)
-                        setShowModal(true)
-                      }}
-                      className="btn-warning"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => deleteRecord(r.id)}
-                      className="btn-danger"
-                    >
-                      Delete
-                    </button>
                   </td>
                 </tr>
               ))}
@@ -172,13 +212,12 @@ export default function CoprasRecordsPage() {
       )}
 
       {/* Modal */}
-      {showModal && (
+      {isModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
           <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-lg">
             <h2 className="text-lg font-semibold mb-4 text-gray-700">
               {editingId ? "Edit Record" : "Add New Record"}
             </h2>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
                 type="date"
@@ -234,7 +273,7 @@ export default function CoprasRecordsPage() {
               />
             </div>
 
-            <div className="mt-4 flex justify-end gap-3">
+            <div className="mt-4 flex gap-3 justify-end">
               <button onClick={saveRecord} className="btn-primary">
                 {editingId ? "Update" : "Add Record"}
               </button>
@@ -242,7 +281,7 @@ export default function CoprasRecordsPage() {
                 onClick={() => {
                   setForm({})
                   setEditingId(null)
-                  setShowModal(false)
+                  setIsModalOpen(false)
                 }}
                 className="btn-secondary"
               >
