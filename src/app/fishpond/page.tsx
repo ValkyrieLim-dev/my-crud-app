@@ -1,9 +1,12 @@
 "use client"
-
+import BackButton from "../components/BackButton"
 export default function RentalPage() {
   return (
+    
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow border border-gray-200">
+           {/* Back button here */}
+        <BackButton />
         <h1 className="text-2xl font-bold text-purple-600 mb-4">
           Fishpond Records
         </h1>

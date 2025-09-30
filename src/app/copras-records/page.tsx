@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabaseClient"
 import type { CoprasRecord, Area } from "../types/database"
+import BackButton from "../components/BackButton"
+
 
 export default function CoprasRecordsPage() {
   const [records, setRecords] = useState<CoprasRecord[]>([])
@@ -95,6 +97,8 @@ export default function CoprasRecordsPage() {
 
   return (
     <div className="p-4 max-w-6xl mx-auto bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen text-gray-900">
+      {/* Back button here */}
+        <BackButton />
       <h1 className="text-3xl font-bold mb-6 text-center text-blue-700">
         Copras Records
       </h1>
