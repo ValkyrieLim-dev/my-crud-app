@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabaseClient"
+import BackButton from "../components/BackButton"
 
 // Type definitions
 interface Expense {
@@ -123,6 +124,7 @@ export default function FishpondPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
+      <BackButton />
       <h1 className="text-2xl font-bold text-center text-blue-700 mb-6">
         Fishpond Croppings
       </h1>
