@@ -43,6 +43,9 @@ export default function FishpondPage() {
   const [fishType, setFishType] = useState("")
   const [kilos, setKilos] = useState("")
   const [pricePerKilo, setPricePerKilo] = useState("")
+  // New cropping modal
+const [showCroppingModal, setShowCroppingModal] = useState(false)
+const [newCroppingDate, setNewCroppingDate] = useState("")
 
   useEffect(() => {
     fetchCroppings()
@@ -125,6 +128,15 @@ export default function FishpondPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <BackButton />
+      <div className="mb-4 flex justify-center">
+  <button
+    onClick={() => setShowCroppingModal(true)}
+    className="bg-blue-600 text-white px-4 py-2 rounded-md"
+  >
+    + Add New Cropping
+  </button>
+</div>
+
       <h1 className="text-2xl font-bold text-center text-blue-700 mb-6">
         Fishpond Croppings
       </h1>
@@ -163,15 +175,7 @@ export default function FishpondPage() {
                   <p className="text-gray-400 text-sm">No expenses yet</p>
                 )}
 
-                <button
-                  onClick={() => {
-                    setSelectedCropping(c.id)
-                    setShowExpenseModal(true)
-                  }}
-                  className="mt-2 w-full bg-red-500 text-white px-3 py-1 rounded-md text-sm"
-                >
-                  + Add Expense
-                </button>
+                              
               </div>
 
               <div className="mt-4">
@@ -188,16 +192,29 @@ export default function FishpondPage() {
                 ) : (
                   <p className="text-gray-400 text-sm">No sales yet</p>
                 )}
+                <div className="mt-4 flex justify-between">
+  <button
+    onClick={() => {
+      setSelectedCropping(c.id)
+      setShowExpenseModal(true)
+    }}
+    className="text-gray-700 text-sm px-2 py-1 rounded hover:bg-gray-200 transition"
+  >
+    + Expense
+  </button>
 
-                <button
-                  onClick={() => {
-                    setSelectedCropping(c.id)
-                    setShowSaleModal(true)
-                  }}
-                  className="mt-2 w-full bg-green-500 text-white px-3 py-1 rounded-md text-sm"
-                >
-                  + Add Sale
-                </button>
+  <button
+    onClick={() => {
+      setSelectedCropping(c.id)
+      setShowSaleModal(true)
+    }}
+    className="text-gray-700 text-sm px-2 py-1 rounded hover:bg-gray-200 transition"
+  >
+    + Sale
+  </button>
+</div>
+
+                                
               </div>
 
               <div className="mt-4 text-sm">
@@ -252,6 +269,46 @@ export default function FishpondPage() {
           </div>
         </div>
       )}
+      {/* Cropping Modal */}
+{showCroppingModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+    <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-sm">
+      <h2 className="text-lg font-bold mb-4">Add New Cropping</h2>
+      <label className="block mb-2">
+        Start Date
+        <input
+          type="date"
+          value={newCroppingDate}
+          onChange={(e) => setNewCroppingDate(e.target.value)}
+          className="w-full border p-2 rounded mt-1"
+        />
+      </label>
+      <div className="flex justify-end gap-2 mt-4">
+        <button
+          onClick={() => setShowCroppingModal(false)}
+          className="px-4 py-2 bg-gray-300 rounded"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={async () => {
+            const { error } = await supabase
+              .from("fishpond_croppings")
+              .insert([{ start_date: newCroppingDate || new Date().toISOString().split("T")[0] }])
+            if (!error) {
+              fetchCroppings()
+              setNewCroppingDate("")
+              setShowCroppingModal(false)
+            }
+          }}
+          className="px-4 py-2 bg-blue-600 text-white rounded"
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Sale Modal */}
       {showSaleModal && (
