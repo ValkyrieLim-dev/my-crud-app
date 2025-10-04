@@ -24,7 +24,7 @@ type RentalRecord = {
   month: string
   year: number
   status: string
-  transaction_id: string // unique per transaction
+  transaction_id: string
 }
 
 export default function RentalPage() {
@@ -39,8 +39,7 @@ export default function RentalPage() {
 
   const [rentalRecords, setRentalRecords] = useState<RentalRecord[]>([])
   const [loadingRecords, setLoadingRecords] = useState(true)
-  const [showMonthYear, setShowMonthYear] = useState(false)
-
+  const [showMonthYear, setShowMonthYear] = useState(true)
 
   const months = [
     "January","February","March","April","May","June",
@@ -113,7 +112,6 @@ export default function RentalPage() {
   async function saveTransaction() {
     if (transactionRows.length === 0) return
 
-    // Unique transaction id
     const transactionId = crypto.randomUUID()
 
     const { error } = await supabase.from("rental_records").insert(
@@ -136,12 +134,27 @@ export default function RentalPage() {
     }
   }
 
-  // Group records by transaction_id to make each card separate
-  const transactionGroups = rentalRecords.reduce((acc: { [key: string]: RentalRecord[] }, record) => {
-    if (!acc[record.transaction_id]) acc[record.transaction_id] = []
-    acc[record.transaction_id].push(record)
+  // Map month names to number
+  const monthMap: { [key: string]: number } = months.reduce((acc, m, idx) => {
+    acc[m] = idx
     return acc
-  }, {})
+  }, {} as { [key: string]: number })
+
+  // Group records by transaction_id
+  const transactionGroups = Object.values(
+    rentalRecords.reduce((acc: { [key: string]: RentalRecord[] }, record) => {
+      if (!acc[record.transaction_id]) acc[record.transaction_id] = []
+      acc[record.transaction_id].push(record)
+      return acc
+    }, {})
+  )
+
+  // Sort transactionGroups by year ascending, then month ascending
+  transactionGroups.sort((a, b) => {
+    const yearDiff = a[0].year - b[0].year
+    if (yearDiff !== 0) return yearDiff
+    return monthMap[a[0].month] - monthMap[b[0].month]
+  })
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -150,36 +163,37 @@ export default function RentalPage() {
 
         <h1 className="text-xl font-semibold mb-3">Rental Transactions</h1>
 
-       {showMonthYear && (
-        <div className="flex gap-2 mb-3 items-center">
-          <select
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="border px-2 py-1 rounded focus:ring-1 focus:ring-gray-400 text-gray-800"
-          >
-            <option value="">Select Month</option>
-            {months.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-          <input
-            type="number"
-            placeholder="Year"
-            value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
-            className="border px-2 py-1 rounded focus:ring-1 focus:ring-gray-400 text-gray-800 w-20"
-          />
-          <button
-            onClick={startTransaction}
-            disabled={loadingTenants || tenants.length === 0}
-            className={`bg-gray-700 text-white px-3 py-1 rounded hover:bg-gray-800 ${
-              loadingTenants || tenants.length === 0 ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-          >
-            {loadingTenants ? "Loading Tenants..." : "Add Transaction"}
-          </button>
-        </div>
-         )}
+        {showMonthYear && (
+          <div className="flex gap-2 mb-3 items-center">
+            <select
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              className="border px-2 py-1 rounded focus:ring-1 focus:ring-gray-400 text-gray-800"
+            >
+              <option value="">Select Month</option>
+              {months.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <input
+              type="number"
+              placeholder="Year"
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+              className="border px-2 py-1 rounded focus:ring-1 focus:ring-gray-400 text-gray-800 w-20"
+            />
+            <button
+              onClick={startTransaction}
+              disabled={loadingTenants || tenants.length === 0}
+              className={`bg-gray-700 text-white px-3 py-1 rounded hover:bg-gray-800 ${
+                loadingTenants || tenants.length === 0 ? "opacity-50 cursor-not-allowed" : ""
+              }`}
+            >
+              {loadingTenants ? "Loading Tenants..." : "Add Transaction"}
+            </button>
+          </div>
+        )}
+
         {/* Ongoing Transaction Table */}
         {showTransaction && (
           <div className="mt-3 border p-3 rounded bg-gray-100">
@@ -244,7 +258,7 @@ export default function RentalPage() {
           {loadingRecords ? (
             <p>Loading saved transactions...</p>
           ) : (
-            Object.values(transactionGroups).map((transaction, idx) => {
+            transactionGroups.map((transaction, idx) => {
               const totalIncome = transaction.reduce(
                 (sum, row) => sum + (row.status === "paid" ? row.tax_amount : 0),
                 0

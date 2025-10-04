@@ -21,9 +21,11 @@ interface Sale {
 
 interface Cropping {
   id: number
-  start_date: string
-  expenses: Expense[]
-  sales: Sale[]
+  start_date: string | null
+  expenses?: Expense[] | null
+  sales?: Sale[] | null
+  completed?: boolean
+  completed_date?: string | null
 }
 
 export default function FishpondPage() {
@@ -43,9 +45,43 @@ export default function FishpondPage() {
   const [fishType, setFishType] = useState("")
   const [kilos, setKilos] = useState("")
   const [pricePerKilo, setPricePerKilo] = useState("")
+
   // New cropping modal
-const [showCroppingModal, setShowCroppingModal] = useState(false)
-const [newCroppingDate, setNewCroppingDate] = useState("")
+  const [showCroppingModal, setShowCroppingModal] = useState(false)
+  const [newCroppingDate, setNewCroppingDate] = useState("")
+  // inside your Cropping Modal: replace the existing onClick handler with this function
+const createCropping = async () => {
+  try {
+    // disable the UI while saving (you can use a state like `saving`)
+    const start = newCroppingDate || new Date().toISOString().split("T")[0]
+
+    // Insert only fields you are sure exist in the DB. If your table does NOT
+    // already have expenses/sales/completed columns, do NOT include them here.
+    // For safety, we insert only start_date and return the inserted row.
+    const { data, error } = await supabase
+      .from("fishpond_croppings")
+      .insert([{ start_date: start }])
+      .select()
+      .single()
+
+    if (error) {
+      // show more useful debug info
+      console.error("create cropping error (detailed):", JSON.stringify(error, null, 2))
+      alert("Failed to create cropping: " + (error.message || JSON.stringify(error)))
+      return
+    }
+
+    // success -> refresh and close modal
+    await fetchCroppings()
+    setNewCroppingDate("")
+    setShowCroppingModal(false)
+  } catch (err) {
+    console.error("unexpected error creating cropping:", err)
+    alert("Unexpected error: " + String(err))
+  } finally {
+    // clear any saving flags here
+  }
+}
 
   useEffect(() => {
     fetchCroppings()
@@ -53,9 +89,12 @@ const [newCroppingDate, setNewCroppingDate] = useState("")
 
   const fetchCroppings = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from("fishpond_croppings").select("*")
+    // select all columns including completed/completed_date if present
+    const { data, error } = await supabase.from("fishpond_croppings").select("*").order("id", { ascending: false })
     if (!error && data) {
       setCroppings(data as Cropping[])
+    } else {
+      console.error("fetchCroppings error", error)
     }
     setLoading(false)
   }
@@ -65,7 +104,7 @@ const [newCroppingDate, setNewCroppingDate] = useState("")
 
     const newExpense: Expense = {
       name: expenseName,
-      amount: parseFloat(expenseAmount),
+      amount: parseFloat(expenseAmount) || 0,
       date: new Date().toISOString().split("T")[0],
     }
 
@@ -80,21 +119,24 @@ const [newCroppingDate, setNewCroppingDate] = useState("")
       .eq("id", selectedCropping)
 
     if (!error) {
-      fetchCroppings()
+      await fetchCroppings()
       setExpenseName("")
       setExpenseAmount("")
       setShowExpenseModal(false)
+      setSelectedCropping(null)
+    } else {
+      console.error("addExpense error", error)
     }
   }
 
   const addSale = async () => {
     if (!selectedCropping) return
 
-    const total = parseFloat(kilos) * parseFloat(pricePerKilo)
+    const total = (parseFloat(kilos) || 0) * (parseFloat(pricePerKilo) || 0)
     const newSale: Sale = {
       fishType,
-      kilos: parseFloat(kilos),
-      pricePerKilo: parseFloat(pricePerKilo),
+      kilos: parseFloat(kilos) || 0,
+      pricePerKilo: parseFloat(pricePerKilo) || 0,
       total,
       date: new Date().toISOString().split("T")[0],
     }
@@ -110,11 +152,32 @@ const [newCroppingDate, setNewCroppingDate] = useState("")
       .eq("id", selectedCropping)
 
     if (!error) {
-      fetchCroppings()
+      await fetchCroppings()
       setFishType("")
       setKilos("")
       setPricePerKilo("")
       setShowSaleModal(false)
+      setSelectedCropping(null)
+    } else {
+      console.error("addSale error", error)
+    }
+  }
+
+  const completeCropping = async (id: number) => {
+    // optional confirmation
+    const ok = window.confirm("Mark this cropping as COMPLETE? This will archive the cropping and store completion date.")
+    if (!ok) return
+
+    const completed_date = new Date().toISOString().split("T")[0]
+    const { error } = await supabase
+      .from("fishpond_croppings")
+      .update({ completed: true, completed_date })
+      .eq("id", id)
+
+    if (!error) {
+      await fetchCroppings()
+    } else {
+      console.error("completeCropping error", error)
     }
   }
 
@@ -125,17 +188,34 @@ const [newCroppingDate, setNewCroppingDate] = useState("")
       minimumFractionDigits: 2,
     }).format(value)
 
+  const daysSince = (dateString?: string | null) => {
+    if (!dateString) return "Start date not set"
+    const start = new Date(dateString)
+    if (isNaN(start.getTime())) return "Invalid start date"
+    const diffMs = Date.now() - start.getTime()
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    return `Day ${Math.max(0, days)} since Buhi – ${start.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    })}`
+  }
+
+  // Separate lists
+  const activeCroppings = croppings.filter((c) => !c.completed)
+  const completedCroppings = croppings.filter((c) => c.completed)
+
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <BackButton />
       <div className="mb-4 flex justify-center">
-  <button
-    onClick={() => setShowCroppingModal(true)}
-    className="bg-blue-600 text-white px-4 py-2 rounded-md"
-  >
-    + Add New Cropping
-  </button>
-</div>
+        <button
+          onClick={() => setShowCroppingModal(true)}
+          className="bg-blue-600 text-white px-4 py-2 rounded-md"
+        >
+          + Add New Cropping
+        </button>
+      </div>
 
       <h1 className="text-2xl font-bold text-center text-blue-700 mb-6">
         Fishpond Croppings
@@ -143,79 +223,210 @@ const [newCroppingDate, setNewCroppingDate] = useState("")
 
       {loading && <p className="text-gray-600 text-center">Loading...</p>}
 
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-        {croppings.map((c) => {
-          const totalExpenses = c.expenses?.reduce((sum, e) => sum + e.amount, 0) || 0
-          const totalSales = c.sales?.reduce((sum, s) => sum + s.total, 0) || 0
+      <h3 className="text-lg font-semibold mb-2">Active Croppings</h3>
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 mb-6">
+        {activeCroppings.length === 0 && <p className="text-gray-500">No active croppings</p>}
+        {activeCroppings.map((c) => {
+          const expensesArr = c.expenses || []
+          const salesArr = c.sales || []
+          const totalExpenses = expensesArr.reduce((sum, e) => sum + (e.amount || 0), 0)
+          const totalSales = salesArr.reduce((sum, s) => sum + (s.total || 0), 0)
           const netIncome = totalSales - totalExpenses
-
-          const day0Text = `Day 0 since Buhi – ${new Date(c.start_date).toLocaleDateString(
-            "en-US",
-            { month: "long", day: "numeric", year: "numeric" }
-          )}`
 
           return (
             <div
               key={c.id}
               className="bg-white rounded-xl shadow-md p-4 border border-gray-200"
             >
-              <p className="text-sm italic text-gray-500">{day0Text}</p>
+              <p className="text-sm italic text-gray-500">{daysSince(c.start_date)}</p>
 
               <div className="mt-2">
-                <h2 className="font-semibold text-gray-800">Expenses</h2>
-                {c.expenses.length > 0 ? (
-                  <ul className="list-disc pl-5 text-sm text-gray-700">
-                    {c.expenses.map((e, idx) => (
-                      <li key={idx}>
-                        {e.name}: {formatCurrency(e.amount)} ({e.date})
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-gray-400 text-sm">No expenses yet</p>
-                )}
-
-                              
-              </div>
-
-              <div className="mt-4">
-                <h2 className="font-semibold text-gray-800">Sales</h2>
-                {c.sales.length > 0 ? (
-                  <ul className="list-disc pl-5 text-sm text-gray-700">
-                    {c.sales.map((s, idx) => (
-                      <li key={idx}>
-                        {s.fishType} – {s.kilos}kg @ {formatCurrency(s.pricePerKilo)} ={" "}
-                        {formatCurrency(s.total)} ({s.date})
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-gray-400 text-sm">No sales yet</p>
-                )}
-                <div className="mt-4 flex justify-between">
-  <button
-    onClick={() => {
-      setSelectedCropping(c.id)
-      setShowExpenseModal(true)
-    }}
-    className="text-gray-700 text-sm px-2 py-1 rounded hover:bg-gray-200 transition"
-  >
-    + Expense
-  </button>
-
-  <button
-    onClick={() => {
-      setSelectedCropping(c.id)
-      setShowSaleModal(true)
-    }}
-    className="text-gray-700 text-sm px-2 py-1 rounded hover:bg-gray-200 transition"
-  >
-    + Sale
-  </button>
+  <h2 className="font-semibold text-gray-800">Expenses</h2>
+  {expensesArr.length > 0 ? (
+    <table className="w-full border-collapse border text-sm text-gray-700">
+      <thead>
+        <tr className="bg-gray-100">
+          <th className="border px-2 py-1 text-left">Name</th>
+          <th className="border px-2 py-1 text-right">Amount</th>
+          <th className="border px-2 py-1">Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {expensesArr.map((e, idx) => (
+          <tr key={idx}>
+            <td className="border px-2 py-1">{e.name}</td>
+            <td className="border px-2 py-1 text-right">{formatCurrency(e.amount || 0)}</td>
+            <td className="border px-2 py-1 text-center">{e.date}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ) : (
+    <p className="text-gray-400 text-sm">No expenses yet</p>
+  )}
 </div>
 
-                                
+<div className="mt-4">
+  <h2 className="font-semibold text-gray-800">Sales</h2>
+  {salesArr.length > 0 ? (
+    <table className="w-full border-collapse border text-sm text-gray-700">
+      <thead>
+        <tr className="bg-gray-100">
+          <th className="border px-2 py-1">Fish Type</th>
+          <th className="border px-2 py-1 text-right">Kilos</th>
+          <th className="border px-2 py-1 text-right">Price/Kilo</th>
+          <th className="border px-2 py-1 text-right">Total</th>
+          <th className="border px-2 py-1">Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {salesArr.map((s, idx) => (
+          <tr key={idx}>
+            <td className="border px-2 py-1">{s.fishType}</td>
+            <td className="border px-2 py-1 text-right">{s.kilos}</td>
+            <td className="border px-2 py-1 text-right">{formatCurrency(s.pricePerKilo)}</td>
+            <td className="border px-2 py-1 text-right">{formatCurrency(s.total)}</td>
+            <td className="border px-2 py-1 text-center">{s.date}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ) : (
+    <p className="text-gray-400 text-sm">No sales yet</p>
+  )}
+
+
+                <div className="mt-4 flex justify-between">
+                  <button
+                    onClick={() => {
+                      setSelectedCropping(c.id)
+                      setShowExpenseModal(true)
+                    }}
+                    className="text-gray-700 text-sm px-2 py-1 rounded hover:bg-gray-200 transition"
+                  >
+                    + Expense
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedCropping(c.id)
+                      setShowSaleModal(true)
+                    }}
+                    className="text-gray-700 text-sm px-2 py-1 rounded hover:bg-gray-200 transition"
+                  >
+                    + Sale
+                  </button>
+
+                  <button
+                    onClick={() => completeCropping(c.id)}
+                    className="text-white text-sm px-3 py-1 rounded bg-green-600 hover:bg-green-700 transition"
+                  >
+                    Complete
+                  </button>
+                </div>
               </div>
+
+              <div className="mt-4 text-sm">
+                <p className="font-semibold text-gray-700">
+                  Total Expenses: {formatCurrency(totalExpenses)}
+                </p>
+                <p className="font-semibold text-gray-700">
+                  Total Sales: {formatCurrency(totalSales)}
+                </p>
+                <p className="font-semibold text-gray-800">
+                  Net Income: {formatCurrency(netIncome)}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <h3 className="text-lg font-semibold mb-2">Completed Croppings</h3>
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+        {completedCroppings.length === 0 && <p className="text-gray-500">No completed croppings yet</p>}
+        {completedCroppings.map((c) => {
+          const expensesArr = c.expenses || []
+          const salesArr = c.sales || []
+          const totalExpenses = expensesArr.reduce((sum, e) => sum + (e.amount || 0), 0)
+          const totalSales = salesArr.reduce((sum, s) => sum + (s.total || 0), 0)
+          const netIncome = totalSales - totalExpenses
+
+          const completedText = c.completed_date
+            ? `Completed on ${new Date(c.completed_date).toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}`
+            : "Completed"
+
+          return (
+            <div
+              key={c.id}
+              className="bg-white rounded-xl shadow-md p-4 border border-gray-200 opacity-90"
+            >
+              <p className="text-sm italic text-gray-500">{completedText}</p>
+              <p className="text-sm italic text-gray-500">{daysSince(c.start_date)}</p>
+
+              <div className="mt-2">
+  <h2 className="font-semibold text-gray-800">Expenses</h2>
+  {expensesArr.length > 0 ? (
+    <table className="w-full border-collapse border text-sm text-gray-700">
+      <thead>
+        <tr className="bg-gray-100">
+          <th className="border px-2 py-1 text-left">Name</th>
+          <th className="border px-2 py-1 text-right">Amount</th>
+          <th className="border px-2 py-1">Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {expensesArr.map((e, idx) => (
+          <tr key={idx}>
+            <td className="border px-2 py-1">{e.name}</td>
+            <td className="border px-2 py-1 text-right">
+              {formatCurrency(e.amount || 0)}
+            </td>
+            <td className="border px-2 py-1 text-center">{e.date}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ) : (
+    <p className="text-gray-400 text-sm">No expenses yet</p>
+  )}
+</div>
+
+
+              <div className="mt-4">
+  <h2 className="font-semibold text-gray-800">Sales</h2>
+  {salesArr.length > 0 ? (
+    <table className="w-full border-collapse border text-sm text-gray-700">
+      <thead>
+        <tr className="bg-gray-100">
+          <th className="border px-2 py-1">Fish Type</th>
+          <th className="border px-2 py-1 text-right">Kilos</th>
+          <th className="border px-2 py-1 text-right">Price/Kilo</th>
+          <th className="border px-2 py-1 text-right">Total</th>
+          <th className="border px-2 py-1">Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {salesArr.map((s, idx) => (
+          <tr key={idx}>
+            <td className="border px-2 py-1">{s.fishType}</td>
+            <td className="border px-2 py-1 text-right">{s.kilos}</td>
+            <td className="border px-2 py-1 text-right">{formatCurrency(s.pricePerKilo)}</td>
+            <td className="border px-2 py-1 text-right">{formatCurrency(s.total)}</td>
+            <td className="border px-2 py-1 text-center">{s.date}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ) : (
+    <p className="text-gray-400 text-sm">No sales yet</p>
+  )}
+</div>
+
 
               <div className="mt-4 text-sm">
                 <p className="font-semibold text-gray-700">
@@ -254,7 +465,10 @@ const [newCroppingDate, setNewCroppingDate] = useState("")
             />
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setShowExpenseModal(false)}
+                onClick={() => {
+                  setShowExpenseModal(false)
+                  setSelectedCropping(null)
+                }}
                 className="px-4 py-2 bg-gray-300 rounded"
               >
                 Cancel
@@ -269,46 +483,50 @@ const [newCroppingDate, setNewCroppingDate] = useState("")
           </div>
         </div>
       )}
+
       {/* Cropping Modal */}
-{showCroppingModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-    <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-sm">
-      <h2 className="text-lg font-bold mb-4">Add New Cropping</h2>
-      <label className="block mb-2">
-        Start Date
-        <input
-          type="date"
-          value={newCroppingDate}
-          onChange={(e) => setNewCroppingDate(e.target.value)}
-          className="w-full border p-2 rounded mt-1"
-        />
-      </label>
-      <div className="flex justify-end gap-2 mt-4">
-        <button
-          onClick={() => setShowCroppingModal(false)}
-          className="px-4 py-2 bg-gray-300 rounded"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={async () => {
-            const { error } = await supabase
-              .from("fishpond_croppings")
-              .insert([{ start_date: newCroppingDate || new Date().toISOString().split("T")[0] }])
-            if (!error) {
-              fetchCroppings()
-              setNewCroppingDate("")
-              setShowCroppingModal(false)
-            }
-          }}
-          className="px-4 py-2 bg-blue-600 text-white rounded"
-        >
-          Save
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+      {showCroppingModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-sm">
+            <h2 className="text-lg font-bold mb-4">Add New Cropping</h2>
+            <label className="block mb-2">
+              Start Date
+              <input
+                type="date"
+                value={newCroppingDate}
+                onChange={(e) => setNewCroppingDate(e.target.value)}
+                className="w-full border p-2 rounded mt-1"
+              />
+            </label>
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setShowCroppingModal(false)}
+                className="px-4 py-2 bg-gray-300 rounded"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const start = newCroppingDate || new Date().toISOString().split("T")[0]
+                  const { error } = await supabase
+                    .from("fishpond_croppings")
+                    .insert([{ start_date: start, expenses: [], sales: [], completed: false }])
+                  if (!error) {
+                    await fetchCroppings()
+                    setNewCroppingDate("")
+                    setShowCroppingModal(false)
+                  } else {
+                    console.error("create cropping error", error)
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sale Modal */}
       {showSaleModal && (
@@ -338,7 +556,10 @@ const [newCroppingDate, setNewCroppingDate] = useState("")
             />
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setShowSaleModal(false)}
+                onClick={() => {
+                  setShowSaleModal(false)
+                  setSelectedCropping(null)
+                }}
                 className="px-4 py-2 bg-gray-300 rounded"
               >
                 Cancel

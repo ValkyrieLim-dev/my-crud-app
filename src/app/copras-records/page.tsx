@@ -5,18 +5,29 @@ import { supabase } from "../lib/supabaseClient"
 import type { CoprasRecord, Area } from "../types/database"
 import BackButton from "../components/BackButton"
 
+interface Harvest {
+  id: number
+  area_id: string
+  start_date: string
+  completed: boolean
+}
+
 export default function CoprasRecordsPage() {
   const [records, setRecords] = useState<CoprasRecord[]>([])
   const [areas, setAreas] = useState<Area[]>([])
+  const [harvests, setHarvests] = useState<Harvest[]>([])
   const [form, setForm] = useState<Partial<CoprasRecord>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
-  // NEW: state for area modal
   const [selectedArea, setSelectedArea] = useState<Area | null>(null)
   const [isAreaModalOpen, setIsAreaModalOpen] = useState(false)
 
+  // NEW: to track if we’re completing a harvest
+  const [completingHarvestId, setCompletingHarvestId] = useState<number | null>(null)
+
+  // Helpers
   const formatDate = (dateString: string) => {
     if (!dateString) return ""
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -33,9 +44,10 @@ export default function CoprasRecordsPage() {
       minimumFractionDigits: 2,
     }).format(value || 0)
 
+  // --- Fetching
   const fetchAreas = async () => {
-    const { data, error } = await supabase.from("areas").select("*")
-    if (!error && data) setAreas(data as Area[])
+    const { data } = await supabase.from("areas").select("*")
+    if (data) setAreas(data as Area[])
   }
 
   const fetchRecords = async () => {
@@ -45,11 +57,38 @@ export default function CoprasRecordsPage() {
     setLoading(false)
   }
 
+  const fetchHarvests = async () => {
+    const { data } = await supabase.from("copras_harvests").select("*")
+    if (data) setHarvests(data as Harvest[])
+  }
+
   useEffect(() => {
     fetchAreas()
     fetchRecords()
+    fetchHarvests()
   }, [])
 
+  // --- Harvest Actions
+  const addHarvest = async (areaId: string) => {
+    const { data, error } = await supabase
+      .from("copras_harvests")
+      .insert([{ area_id: areaId }])
+      .select()
+      .single()
+
+    if (!error && data) {
+      setHarvests((prev) => [...prev, data as Harvest])
+    }
+  }
+
+  const completeHarvest = (harvestId: number, areaId: string) => {
+    // Instead of auto-completing → open Add Record modal
+    setForm({ area_id: areaId, date: new Date().toISOString().split("T")[0] })
+    setCompletingHarvestId(harvestId)
+    setIsModalOpen(true)
+  }
+
+  // --- Record Actions
   const saveRecord = async () => {
     if (!form.date || !form.area_id || !form.farmer) {
       alert("Date, Area, and Farmer are required!")
@@ -81,18 +120,33 @@ export default function CoprasRecordsPage() {
       ])
     }
 
+    // If completing a harvest → mark it as done
+    if (completingHarvestId) {
+      await supabase
+        .from("copras_harvests")
+        .update({ completed: true })
+        .eq("id", completingHarvestId)
+
+      setHarvests((prev) =>
+        prev.map((h) =>
+          h.id === completingHarvestId ? { ...h, completed: true } : h
+        )
+      )
+      setCompletingHarvestId(null)
+    }
+
     setForm({})
     setEditingId(null)
     setIsModalOpen(false)
     fetchRecords()
   }
 
-  // --- Summary Calculations ---
+  // --- Summary
   const totalSales = records.reduce((sum, r) => sum + (r.sales || 0), 0)
   const totalExpenses = records.reduce((sum, r) => sum + (r.expenses || 0), 0)
   const totalNetSales = (totalSales - totalExpenses) / 2
 
-  // --- Area Harvest Stats ---
+  // --- Area Harvest Stats
   const areaHarvests = areas.map((area) => {
     const areaRecs = records.filter((r) => r.area_id === area.id)
 
@@ -143,30 +197,71 @@ export default function CoprasRecordsPage() {
 
       {/* Area Harvest Cards */}
       <div className="grid gap-3 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mb-6">
-        {areaHarvests.map((a) => (
-          <div
-            key={a.id}
-            onClick={() => {
-              const area = areas.find((ar) => ar.id === a.id)
-              setSelectedArea(area || null)
-              setIsAreaModalOpen(true)
-            }}
-            className="cursor-pointer bg-white rounded-xl shadow-md border border-gray-200 p-4 hover:shadow-lg transition"
-          >
-            <h3 className="text-lg font-bold text-blue-700 mb-2">{a.name}</h3>
-            <p className="text-sm text-gray-600">
-              <span className="font-semibold">Last Harvest:</span>{" "}
-              {a.lastHarvest || "No records"}
-            </p>
-            <p className="text-sm text-gray-600">
-              <span className="font-semibold">Next Harvest:</span>{" "}
-              {a.nextHarvest || "—"}
-            </p>
-          </div>
-        ))}
+        {areas.map((area) => {
+          const ongoing = harvests.find(
+            (h) => h.area_id === area.id && !h.completed
+          )
+          const areaStats = areaHarvests.find((a) => a.id === area.id)
+
+          return (
+            <div
+              key={area.id}
+              onClick={() => {
+                const areaData = areas.find((ar) => ar.id === area.id)
+                setSelectedArea(areaData || null)
+                setIsAreaModalOpen(true)
+              }}
+              className="cursor-pointer bg-white rounded-xl shadow-md border border-gray-200 p-4 hover:shadow-lg transition"
+            >
+              <h3 className="text-lg font-bold text-blue-700 mb-2">
+                {area.area_name}
+              </h3>
+
+              {ongoing ? (
+                <p className="text-sm text-orange-600 font-semibold">
+  🌱 Ongoing Harvest (Started {formatDate(ongoing.start_date)})
+  <button
+  onClick={(e) => {
+    e.stopPropagation()
+    setForm({ ...form, area_id: area.id }) // lock the area
+    setEditingId(null) // new record
+    setCompletingHarvestId(ongoing.id) // 👈 important
+    setIsModalOpen(true)
+  }}
+  className="ml-2 text-xs bg-blue-600 text-white px-2 py-1 rounded"
+>
+  ✅ Complete
+</button>
+
+
+</p>
+
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    addHarvest(area.id)
+                  }}
+                  className="mt-2 px-3 py-1 bg-green-600 text-white text-xs rounded"
+                >
+                  + Add Harvest
+                </button>
+              )}
+
+              <p className="text-sm text-gray-600 mt-2">
+                <span className="font-semibold">Last Harvest:</span>{" "}
+                {areaStats?.lastHarvest || "No records"}
+              </p>
+              <p className="text-sm text-gray-600">
+                <span className="font-semibold">Next Harvest:</span>{" "}
+                {areaStats?.nextHarvest || "—"}
+              </p>
+            </div>
+          )
+        })}
       </div>
 
-      {/* Dashboard Cards */}
+      {/* Dashboard Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div className="flex flex-col items-center justify-center p-3 bg-white border rounded-xl shadow-sm">
           <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Year</h3>
@@ -187,86 +282,91 @@ export default function CoprasRecordsPage() {
         </div>
       </div>
 
-      
-     
-{/* Add/Edit Record Modal */}
-{isModalOpen && (
-  <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-    <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-lg">
-      <h2 className="text-lg font-semibold mb-4 text-gray-700">
-        {editingId ? "Edit Record" : "Add New Record"}
-      </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <input
-          type="date"
-          value={form.date || ""}
-          onChange={(e) => setForm({ ...form, date: e.target.value })}
-          className="input"
-        />
-        <select
-          value={form.area_id || ""}
-          onChange={(e) => setForm({ ...form, area_id: e.target.value })}
-          className="input"
-        >
-          <option value="">Select Area</option>
-          {areas.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.area_name}
-            </option>
-          ))}
-        </select>
-        <input
-          type="text"
-          placeholder="Farmer"
-          value={form.farmer || ""}
-          onChange={(e) => setForm({ ...form, farmer: e.target.value })}
-          className="input"
-        />
-        <input
-          type="number"
-          placeholder="Sales"
-          value={form.sales || ""}
-          onChange={(e) => setForm({ ...form, sales: Number(e.target.value) })}
-          className="input"
-        />
-        <input
-          type="number"
-          placeholder="Expenses"
-          value={form.expenses || ""}
-          onChange={(e) =>
-            setForm({ ...form, expenses: Number(e.target.value) })
-          }
-          className="input"
-        />
-        <input
-          type="number"
-          placeholder="Weight"
-          value={form.weight || ""}
-          onChange={(e) =>
-            setForm({ ...form, weight: Number(e.target.value) })
-          }
-          className="input"
-        />
-      </div>
+      {/* Add/Edit/Complete Record Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-lg">
+            <h2 className="text-lg font-semibold mb-4 text-gray-700">
+              {editingId
+                ? "Edit Record"
+                : completingHarvestId
+                ? "Complete Harvest"
+                : "Add New Record"}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                type="date"
+                value={form.date || ""}
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+                className="input"
+              />
+              <select
+  value={form.area_id || ""}
+  onChange={(e) => setForm({ ...form, area_id: e.target.value })}
+  className="input"
+  disabled={!!completingHarvestId} // 👈 lock if completing
+>
+  <option value="">Select Area</option>
+  {areas.map((a) => (
+    <option key={a.id} value={a.id}>
+      {a.area_name}
+    </option>
+  ))}
+</select>
 
-      <div className="mt-4 flex gap-3 justify-end">
-        <button onClick={saveRecord} className="btn-primary">
-          {editingId ? "Update" : "Add Record"}
-        </button>
-        <button
-          onClick={() => {
-            setForm({})
-            setEditingId(null)
-            setIsModalOpen(false)
-          }}
-          className="btn-secondary"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+              <input
+                type="text"
+                placeholder="Farmer"
+                value={form.farmer || ""}
+                onChange={(e) => setForm({ ...form, farmer: e.target.value })}
+                className="input"
+              />
+              <input
+                type="number"
+                placeholder="Sales"
+                value={form.sales || ""}
+                onChange={(e) => setForm({ ...form, sales: Number(e.target.value) })}
+                className="input"
+              />
+              <input
+                type="number"
+                placeholder="Expenses"
+                value={form.expenses || ""}
+                onChange={(e) => setForm({ ...form, expenses: Number(e.target.value) })}
+                className="input"
+              />
+              <input
+                type="number"
+                placeholder="Weight"
+                value={form.weight || ""}
+                onChange={(e) => setForm({ ...form, weight: Number(e.target.value) })}
+                className="input"
+              />
+            </div>
+
+            <div className="mt-4 flex gap-3 justify-end">
+              <button onClick={saveRecord} className="btn-primary">
+                {editingId
+                  ? "Update"
+                  : completingHarvestId
+                  ? "Complete Harvest"
+                  : "Add Record"}
+              </button>
+              <button
+                onClick={() => {
+                  setForm({})
+                  setEditingId(null)
+                  setCompletingHarvestId(null)
+                  setIsModalOpen(false)
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Area Records Modal */}
       {isAreaModalOpen && selectedArea && (
@@ -282,7 +382,7 @@ export default function CoprasRecordsPage() {
               <div className="space-y-3">
                 {records
                   .filter((r) => r.area_id === selectedArea.id)
-                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) // sort latest first
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                   .map((r) => (
                     <div key={r.id} className="bg-gray-50 border rounded-lg p-3 shadow-sm">
                       <p className="text-sm text-gray-700">
@@ -321,6 +421,5 @@ export default function CoprasRecordsPage() {
         </div>
       )}
     </div>
-    
   )
 }
